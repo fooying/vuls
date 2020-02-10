@@ -2,11 +2,12 @@ package parser
 
 import (
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"os"
-	"sort"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
+	"golang.org/x/xerrors"
 )
 
 type analysis struct {
@@ -31,22 +32,24 @@ func appendIfMissing(slice []string, str string) []string {
 	return append(slice, str)
 }
 
-// Parse parses XML and collect list of cpe
+// Parse parses OWASP dependency check XML and collect list of cpe
 func Parse(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return []string{}, fmt.Errorf("Failed to open: %s", err)
+		log.Warnf("OWASP Dependency Check XML is not found: %s", path)
+		return []string{}, nil
 	}
 	defer file.Close()
 
 	b, err := ioutil.ReadAll(file)
 	if err != nil {
-		return []string{}, fmt.Errorf("Failed to read: %s", err)
+		log.Warnf("Failed to read OWASP Dependency Check XML: %s", path)
+		return []string{}, nil
 	}
 
 	var anal analysis
 	if err := xml.Unmarshal(b, &anal); err != nil {
-		fmt.Errorf("Failed to unmarshal: %s", err)
+		return nil, xerrors.Errorf("Failed to unmarshal: %s", err)
 	}
 
 	cpes := []string{}
@@ -59,6 +62,5 @@ func Parse(path string) ([]string, error) {
 			}
 		}
 	}
-	sort.Strings(cpes)
 	return cpes, nil
 }

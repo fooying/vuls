@@ -1,11 +1,9 @@
 .PHONY: \
-	dep \
-	depup \
 	build \
 	install \
 	all \
 	vendor \
-	lint \
+ 	lint \
 	vet \
 	fmt \
 	fmtcheck \
@@ -15,50 +13,49 @@
 	clean
 
 SRCS = $(shell git ls-files '*.go')
-PKGS = ./. ./config ./models ./report ./cveapi ./scan ./util ./commands ./cache
+PKGS = $(shell go list ./...)
 VERSION := $(shell git describe --tags --abbrev=0)
 REVISION := $(shell git rev-parse --short HEAD)
-LDFLAGS := -X 'main.version=$(VERSION)' \
-	-X 'main.revision=$(REVISION)'
+BUILDTIME := $(shell date "+%Y%m%d_%H%M%S")
+LDFLAGS := -X 'github.com/future-architect/vuls/config.Version=$(VERSION)' \
+    -X 'github.com/future-architect/vuls/config.Revision=build-$(BUILDTIME)_$(REVISION)'
+GO := GO111MODULE=on go
+GO_OFF := GO111MODULE=off go
 
-all: dep build test
 
-dep:
-	go get -u github.com/golang/dep/...
-	dep ensure
+all: build
 
-depup:
-	go get -u github.com/golang/dep/...
-	dep ensure -update
+build: main.go pretest fmt
+	$(GO) build -a -ldflags "$(LDFLAGS)" -o vuls $<
 
-build: main.go dep
-	go build -ldflags "$(LDFLAGS)" -o vuls $<
+b: 	main.go pretest fmt
+	$(GO) build -ldflags "$(LDFLAGS)" -o vuls $<
 
-install: main.go dep
-	go install -ldflags "$(LDFLAGS)"
-
+install: main.go pretest
+	$(GO) install -ldflags "$(LDFLAGS)"
 
 lint:
-	@ go get -v github.com/golang/lint/golint
-	$(foreach file,$(SRCS),golint $(file) || exit;)
+	$(GO_OFF) get -u golang.org/x/lint/golint
+	golint $(PKGS)
 
 vet:
-	#  @-go get -v golang.org/x/tools/cmd/vet
-	echo $(PKGS) | xargs go vet || exit;
+	echo $(PKGS) | xargs env $(GO) vet || exit;
 
 fmt:
-	gofmt -w $(SRCS)
+	gofmt -s -w $(SRCS)
+
+mlint:
+	$(foreach file,$(SRCS),gometalinter $(file) || exit;)
 
 fmtcheck:
-	$(foreach file,$(SRCS),gofmt -d $(file);)
+	$(foreach file,$(SRCS),gofmt -s -d $(file);)
 
 pretest: lint vet fmtcheck
 
-test: pretest
-	go install
-	echo $(PKGS) | xargs go test -cover -v || exit;
+test: 
+	$(GO) test -cover -v ./... || exit;
 
-unused :
+unused:
 	$(foreach pkg,$(PKGS),unused $(pkg);)
 
 cov:

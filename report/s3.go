@@ -1,20 +1,3 @@
-/* Vuls - Vulnerability Scanner
-Copyright (C) 2016  Future Architect, Inc. Japan.
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
 package report
 
 import (
@@ -22,6 +5,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"path"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -30,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"golang.org/x/xerrors"
 
 	c "github.com/future-architect/vuls/config"
 	"github.com/future-architect/vuls/models"
@@ -40,10 +25,10 @@ type S3Writer struct{}
 
 func getS3() *s3.S3 {
 	Config := &aws.Config{
-		Region: aws.String(c.Conf.AwsRegion),
+		Region: aws.String(c.Conf.AWS.Region),
 		Credentials: credentials.NewChainCredentials([]credentials.Provider{
 			&credentials.EnvProvider{},
-			&credentials.SharedCredentialsProvider{Filename: "", Profile: c.Conf.AwsProfile},
+			&credentials.SharedCredentialsProvider{Filename: "", Profile: c.Conf.AWS.Profile},
 			&ec2rolecreds.EC2RoleProvider{Client: ec2metadata.New(session.New())},
 		}),
 	}
@@ -74,16 +59,16 @@ func (w S3Writer) Write(rs ...models.ScanResult) (err error) {
 			k := key + ".json"
 			var b []byte
 			if b, err = json.Marshal(r); err != nil {
-				return fmt.Errorf("Failed to Marshal to JSON: %s", err)
+				return xerrors.Errorf("Failed to Marshal to JSON: %w", err)
 			}
 			if err := putObject(svc, k, b); err != nil {
 				return err
 			}
 		}
 
-		if c.Conf.FormatShortText {
+		if c.Conf.FormatList {
 			k := key + "_short.txt"
-			text := formatShortPlainText(r)
+			text := formatList(r)
 			if err := putObject(svc, k, []byte(text)); err != nil {
 				return err
 			}
@@ -101,7 +86,7 @@ func (w S3Writer) Write(rs ...models.ScanResult) (err error) {
 			k := key + ".xml"
 			var b []byte
 			if b, err = xml.Marshal(r); err != nil {
-				return fmt.Errorf("Failed to Marshal to XML: %s", err)
+				return xerrors.Errorf("Failed to Marshal to XML: %w", err)
 			}
 			allBytes := bytes.Join([][]byte{[]byte(xml.Header + vulsOpenTag), b, []byte(vulsCloseTag)}, []byte{})
 			if err := putObject(svc, k, allBytes); err != nil {
@@ -117,22 +102,22 @@ func CheckIfBucketExists() error {
 	svc := getS3()
 	result, err := svc.ListBuckets(&s3.ListBucketsInput{})
 	if err != nil {
-		return fmt.Errorf(
-			"Failed to list buckets. err: %s, profile: %s, region: %s",
-			err, c.Conf.AwsProfile, c.Conf.AwsRegion)
+		return xerrors.Errorf(
+			"Failed to list buckets. err: %w, profile: %s, region: %s",
+			err, c.Conf.AWS.Profile, c.Conf.AWS.Region)
 	}
 
 	found := false
 	for _, bucket := range result.Buckets {
-		if *bucket.Name == c.Conf.S3Bucket {
+		if *bucket.Name == c.Conf.AWS.S3Bucket {
 			found = true
 			break
 		}
 	}
 	if !found {
-		return fmt.Errorf(
-			"Failed to find the buckets. profile: %s, region: %s, bukdet: %s",
-			c.Conf.AwsProfile, c.Conf.AwsRegion, c.Conf.S3Bucket)
+		return xerrors.Errorf(
+			"Failed to find the buckets. profile: %s, region: %s, bucket: %s",
+			c.Conf.AWS.Profile, c.Conf.AWS.Region, c.Conf.AWS.S3Bucket)
 	}
 	return nil
 }
@@ -143,16 +128,22 @@ func putObject(svc *s3.S3, k string, b []byte) error {
 		if b, err = gz(b); err != nil {
 			return err
 		}
-		k = k + ".gz"
+		k += ".gz"
 	}
 
-	if _, err := svc.PutObject(&s3.PutObjectInput{
-		Bucket: &c.Conf.S3Bucket,
-		Key:    &k,
+	putObjectInput := &s3.PutObjectInput{
+		Bucket: aws.String(c.Conf.AWS.S3Bucket),
+		Key:    aws.String(path.Join(c.Conf.AWS.S3ResultsDir, k)),
 		Body:   bytes.NewReader(b),
-	}); err != nil {
-		return fmt.Errorf("Failed to upload data to %s/%s, %s",
-			c.Conf.S3Bucket, k, err)
+	}
+
+	if c.Conf.AWS.S3ServerSideEncryption != "" {
+		putObjectInput.ServerSideEncryption = aws.String(c.Conf.AWS.S3ServerSideEncryption)
+	}
+
+	if _, err := svc.PutObject(putObjectInput); err != nil {
+		return xerrors.Errorf("Failed to upload data to %s/%s, err: %w",
+			c.Conf.AWS.S3Bucket, k, err)
 	}
 	return nil
 }

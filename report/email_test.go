@@ -1,20 +1,3 @@
-/* Vuls - Vulnerability Scanner
-Copyright (C) 2016  Future Architect, Inc. Japan.
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
 package report
 
 import (
@@ -100,7 +83,7 @@ func TestSend(t *testing.T) {
 			t.Errorf("#%d: wrong 'addr' field.\r\nexpected: %s\n got: %s", i, test.out.addr, r.addr)
 		}
 
-		if !reflect.DeepEqual(r.auth, test.out.auth) {
+		if !reflect.DeepEqual(r.auth, test.out.auth) && r.auth != nil {
 			t.Errorf("#%d: wrong 'auth' field.\r\nexpected: %v\n got: %v", i, test.out.auth, r.auth)
 		}
 

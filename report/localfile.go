@@ -1,33 +1,16 @@
-/* Vuls - Vulnerability Scanner
-Copyright (C) 2016  Future Architect, Inc. Japan.
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
-*/
-
 package report
 
 import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	c "github.com/future-architect/vuls/config"
 	"github.com/future-architect/vuls/models"
+	"golang.org/x/xerrors"
 )
 
 // LocalFileWriter writes results to a local file.
@@ -40,8 +23,8 @@ func (w LocalFileWriter) Write(rs ...models.ScanResult) (err error) {
 		path := filepath.Join(w.CurrentDir, "summary.txt")
 		text := formatOneLineSummary(rs...)
 		if err := writeFile(path, []byte(text), 0600); err != nil {
-			return fmt.Errorf(
-				"Failed to write to file. path: %s, err: %s",
+			return xerrors.Errorf(
+				"Failed to write to file. path: %s, err: %w",
 				path, err)
 		}
 	}
@@ -58,15 +41,21 @@ func (w LocalFileWriter) Write(rs ...models.ScanResult) (err error) {
 			}
 
 			var b []byte
-			if b, err = json.Marshal(r); err != nil {
-				return fmt.Errorf("Failed to Marshal to JSON: %s", err)
+			if c.Conf.Debug {
+				if b, err = json.MarshalIndent(r, "", "    "); err != nil {
+					return xerrors.Errorf("Failed to Marshal to JSON: %w", err)
+				}
+			} else {
+				if b, err = json.Marshal(r); err != nil {
+					return xerrors.Errorf("Failed to Marshal to JSON: %w", err)
+				}
 			}
 			if err := writeFile(p, b, 0600); err != nil {
-				return fmt.Errorf("Failed to write JSON. path: %s, err: %s", p, err)
+				return xerrors.Errorf("Failed to write JSON. path: %s, err: %w", p, err)
 			}
 		}
 
-		if c.Conf.FormatShortText {
+		if c.Conf.FormatList {
 			var p string
 			if c.Conf.Diff {
 				p = path + "_short_diff.txt"
@@ -75,9 +64,9 @@ func (w LocalFileWriter) Write(rs ...models.ScanResult) (err error) {
 			}
 
 			if err := writeFile(
-				p, []byte(formatShortPlainText(r)), 0600); err != nil {
-				return fmt.Errorf(
-					"Failed to write text files. path: %s, err: %s", p, err)
+				p, []byte(formatList(r)), 0600); err != nil {
+				return xerrors.Errorf(
+					"Failed to write text files. path: %s, err: %w", p, err)
 			}
 		}
 
@@ -91,8 +80,8 @@ func (w LocalFileWriter) Write(rs ...models.ScanResult) (err error) {
 
 			if err := writeFile(
 				p, []byte(formatFullPlainText(r)), 0600); err != nil {
-				return fmt.Errorf(
-					"Failed to write text files. path: %s, err: %s", p, err)
+				return xerrors.Errorf(
+					"Failed to write text files. path: %s, err: %w", p, err)
 			}
 		}
 
@@ -106,11 +95,11 @@ func (w LocalFileWriter) Write(rs ...models.ScanResult) (err error) {
 
 			var b []byte
 			if b, err = xml.Marshal(r); err != nil {
-				return fmt.Errorf("Failed to Marshal to XML: %s", err)
+				return xerrors.Errorf("Failed to Marshal to XML: %w", err)
 			}
 			allBytes := bytes.Join([][]byte{[]byte(xml.Header + vulsOpenTag), b, []byte(vulsCloseTag)}, []byte{})
 			if err := writeFile(p, allBytes, 0600); err != nil {
-				return fmt.Errorf("Failed to write XML. path: %s, err: %s", p, err)
+				return xerrors.Errorf("Failed to write XML. path: %s, err: %w", p, err)
 			}
 		}
 	}
@@ -123,13 +112,7 @@ func writeFile(path string, data []byte, perm os.FileMode) error {
 		if data, err = gz(data); err != nil {
 			return err
 		}
-		path = path + ".gz"
+		path += ".gz"
 	}
-
-	if err := ioutil.WriteFile(
-		path, []byte(data), perm); err != nil {
-		return err
-	}
-
-	return nil
+	return ioutil.WriteFile(path, []byte(data), perm)
 }

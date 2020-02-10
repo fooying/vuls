@@ -1,6 +1,7 @@
 vuls
 .vscode
 *.txt
+*.json
 *.sqlite3*
 *.db
 tags
@@ -12,3 +13,6 @@ log/
 results/
 *config.toml
 !setup/docker/*
+.DS_Store
+dist/
+.idea
